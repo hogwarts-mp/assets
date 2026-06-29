@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>HogwartsMP HUD</title>
+    <link rel="stylesheet" href="theme.css">
+    <style>
+        /* ---- Always-on corner HUD ------------------------------------- */
+        #hud-version {
+            position: fixed;
+            right: 24px;
+            top: 18px;
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+
+        #hud-version .title {
+            color: var(--hmp-gold-bright);
+            font-variant: small-caps;
+            letter-spacing: 0.1em;
+            font-size: 18px;
+        }
+
+        #hud-version .ver {
+            font-size: 12px;
+            color: var(--hmp-parchment-dim);
+        }
+
+        #hud-status {
+            position: fixed;
+            left: 22px;
+            bottom: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            font-size: 13px;
+            color: var(--hmp-parchment-dim);
+        }
+
+        #hud-status .val {
+            color: var(--hmp-parchment);
+        }
+
+        #hud-banner {
+            position: fixed;
+            left: 0;
+            right: 0;
+            top: 96px;
+            text-align: center;
+            color: var(--hmp-gold-bright);
+            font-variant: small-caps;
+            letter-spacing: 0.14em;
+            font-size: 16px;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+            white-space: pre-line;
+            display: none;
+            opacity: 1;
+            transition: opacity 1.2s ease;
+        }
+
+        #hud-banner.show {
+            display: block;
+        }
+
+        /* Auto-dismissed a few seconds after appearing so it doesn't nag */
+        #hud-banner.fade-out {
+            opacity: 0;
+        }
+
+        #hud-version,
+        #hud-status,
+        #hud-banner {
+            pointer-events: none;
+            text-shadow:
+                0 1px 2px rgba(0, 0, 0, 0.9),
+                0 0 6px rgba(0, 0, 0, 0.55);
+        }
+
+        /* ---- Dev menu (F8) -------------------------------------------- */
+        #devmenu {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 78vw;
+            max-width: 1100px;
+            height: 72vh;
+            flex-direction: column;
+            display: none;
+        }
+
+        #devmenu.open {
+            display: flex;
+        }
+
+        #devmenu-tabs {
+            display: flex;
+            align-items: stretch;
+            gap: 2px;
+            padding: 6px 8px 0;
+            border-bottom: 1px solid var(--hmp-gold-dim);
+        }
+
+        #devmenu-tabs .tab {
+            font-family: var(--hmp-font);
+            font-size: 13px;
+            font-variant: small-caps;
+            letter-spacing: 0.06em;
+            color: var(--hmp-parchment-dim);
+            background: transparent;
+            border: 1px solid transparent;
+            border-bottom: none;
+            border-radius: 4px 4px 0 0;
+            padding: 6px 16px;
+            cursor: pointer;
+        }
+
+        #devmenu-tabs .tab:hover {
+            color: var(--hmp-parchment);
+        }
+
+        #devmenu-tabs .tab.active {
+            color: var(--hmp-gold-bright);
+            border-color: var(--hmp-gold-dim);
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        #devmenu-tabs .spacer {
+            flex: 1;
+        }
+
+        #devmenu-tabs .tab.close {
+            color: var(--hmp-parchment-dim);
+            padding: 6px 12px;
+        }
+
+        #devmenu-tabs .tab.close:hover {
+            color: var(--hmp-gold-bright);
+        }
+
+        #devmenu-body {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+        }
+
+        .tabpane {
+            display: none;
+            flex: 1;
+            min-height: 0;
+            flex-direction: column;
+        }
+
+        .tabpane.active {
+            display: flex;
+        }
+
+        /* ---- Console tab ---------------------------------------------- */
+        #console-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 6px 12px;
+        }
+
+        #console-bar label {
+            font-size: 11px;
+            color: var(--hmp-parchment-dim);
+        }
+
+        #console-level {
+            font-family: var(--hmp-font);
+            font-size: 12px;
+            color: var(--hmp-parchment);
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid var(--hmp-gold-dim);
+            outline: none;
+        }
+
+        #console-log {
+            flex: 1;
+            overflow-y: auto;
+            padding: 4px 12px 8px;
+            font-family: "Cascadia Mono", "Consolas", monospace;
+            font-size: 12.5px;
+            line-height: 1.4;
+            min-height: 0;
+            border-top: 1px solid var(--hmp-gold-dim);
+        }
+
+        #console-log .line {
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+        }
+
+        /* Bracket-group coloring mirrors the old ImGui Console::FormatLog */
+        .lg-time { color: #7fd8d8; }
+        .lg-name { color: #8fb0ff; }
+        .lg-msg { color: var(--hmp-parchment); }
+        .lvl-info { color: #58d65b; }
+        .lvl-debug { color: #6f8cff; }
+        .lvl-error { color: #ff5a5a; }
+        .lvl-warning { color: #f2d24b; }
+        .lvl-trace { color: #b483ff; }
+        .lvl-critical { color: #ff8a3c; }
+        .lvl-other { color: #ff6fb0; }
+
+        #console-input-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px 4px;
+            border-top: 1px solid var(--hmp-gold-dim);
+        }
+
+        #console-input-row .prompt {
+            color: var(--hmp-gold-bright);
+            font-size: 14px;
+        }
+
+        #console-input {
+            flex: 1;
+            font-family: "Cascadia Mono", "Consolas", monospace;
+            padding: 4px 2px;
+        }
+
+        #console-hint {
+            color: var(--hmp-gold-dim);
+            font-size: 11px;
+            min-height: 13px;
+            padding: 0 12px 8px;
+        }
+
+        /* ---- Teleport tab --------------------------------------------- */
+        #teleport-filter {
+            margin: 10px 12px 4px;
+            padding: 4px 6px;
+        }
+
+        #teleport-list {
+            flex: 1;
+            overflow-y: auto;
+            margin: 4px 8px;
+            min-height: 0;
+        }
+
+        #teleport-list .loc {
+            padding: 3px 8px;
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+
+        #teleport-list .loc:hover { background: rgba(200, 168, 95, 0.12); }
+        #teleport-list .loc.sel {
+            background: rgba(200, 168, 95, 0.22);
+            color: var(--hmp-gold-bright);
+        }
+
+        .pane-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 8px 12px;
+            border-top: 1px solid var(--hmp-gold-dim);
+        }
+
+        .hmp-btn {
+            font-family: var(--hmp-font);
+            font-size: 13px;
+            color: var(--hmp-parchment);
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--hmp-gold-dim);
+            border-radius: 3px;
+            padding: 4px 14px;
+            cursor: pointer;
+        }
+
+        .hmp-btn:hover {
+            border-color: var(--hmp-gold-bright);
+            color: var(--hmp-gold-bright);
+        }
+
+        .hmp-btn.primary {
+            color: var(--hmp-gold-bright);
+            border-color: var(--hmp-gold);
+            background: rgba(200, 168, 95, 0.12);
+        }
+
+        .hmp-btn.primary:hover { background: rgba(200, 168, 95, 0.22); }
+
+        /* ---- Web debug tab -------------------------------------------- */
+        #webdebug-body {
+            flex: 1;
+            margin: 0;
+            padding: 10px 12px;
+            overflow-y: auto;
+            font-family: "Cascadia Mono", "Consolas", monospace;
+            font-size: 11.5px;
+            line-height: 1.45;
+            color: var(--hmp-parchment-dim);
+            white-space: pre-wrap;
+            min-height: 0;
+        }
+
+        /* ---- Playground tab ------------------------------------------- */
+        #playground {
+            overflow-y: auto;
+            padding: 12px 16px;
+            gap: 14px;
+        }
+
+        .pg-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--hmp-gold-dim);
+        }
+
+        .pg-section:last-child { border-bottom: none; }
+
+        .pg-section .hmp-heading { font-size: 13px; }
+
+        .pg-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .pg-row input[type="text"] {
+            flex: 1;
+            min-width: 220px;
+            font-family: "Cascadia Mono", "Consolas", monospace;
+            font-size: 12.5px;
+            padding: 4px 6px;
+        }
+
+        .pg-row input[type="number"] {
+            width: 64px;
+            font-size: 13px;
+            padding: 3px 4px;
+        }
+
+        .pg-status { color: var(--hmp-parchment); }
+
+        /* ---- Connect screen (main menu) ------------------------------- */
+        #connect {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 380px;
+            flex-direction: column;
+            display: none;
+        }
+
+        #connect.open { display: flex; }
+
+        #connect .head {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--hmp-gold-dim);
+        }
+
+        #connect .head .hmp-heading { font-size: 17px; }
+
+        #connect-body {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 14px 16px 6px;
+        }
+
+        #connect-body label {
+            font-size: 11px;
+            color: var(--hmp-parchment-dim);
+            font-variant: small-caps;
+            letter-spacing: 0.08em;
+            margin-top: 6px;
+        }
+
+        #connect-body input { padding: 5px 4px; font-size: 15px; }
+
+        #connect-discord {
+            display: none;
+            font-size: 13px;
+            color: var(--hmp-parchment);
+            padding: 4px 0;
+        }
+
+        #connect .actions {
+            display: flex;
+            gap: 8px;
+            padding: 10px 16px 14px;
+        }
+
+        #connect .actions .hmp-btn { flex: 1; }
+    </style>
+</head>
+<body>
+    <!-- Always-on HUD text -->
+    <div id="hud-version">
+        <span class="title">Hogwarts Legacy Multiplayer</span>
+        <span class="ver" id="hud-fw"></span>
+        <span class="ver" id="hud-mod"></span>
+    </div>
+    <div id="hud-status">
+        <span>Connection: <span class="val" id="hud-conn">&mdash;</span></span>
+        <span>Ping: <span class="val" id="hud-ping">&mdash;</span></span>
+    </div>
+    <div id="hud-banner"></div>
+
+    <!-- Dev menu (F8) -->
+    <div id="devmenu" class="hmp-panel">
+        <div id="devmenu-tabs">
+            <button class="tab active" data-tab="console">Console</button>
+            <button class="tab" data-tab="playground">Playground</button>
+            <button class="tab" data-tab="teleport">Teleport</button>
+            <button class="tab" data-tab="webdebug">Web Debug</button>
+            <span class="spacer"></span>
+            <button class="tab close" id="devmenu-close" title="Close (Esc / F8)">&#10005;</button>
+        </div>
+        <div id="devmenu-body">
+            <!-- Console -->
+            <div class="tabpane active" data-pane="console">
+                <div id="console-bar">
+                    <label for="console-level">Log level</label>
+                    <select id="console-level">
+                        <option value="trace">Trace</option>
+                        <option value="debug">Debug</option>
+                        <option value="info" selected>Info</option>
+                        <option value="warning">Warn</option>
+                        <option value="error">Error</option>
+                        <option value="critical">Critical</option>
+                        <option value="off">Off</option>
+                    </select>
+                </div>
+                <div id="console-log" class="hmp-scroll"></div>
+                <div id="console-input-row">
+                    <span class="prompt">&raquo;</span>
+                    <input id="console-input" class="hmp-input" spellcheck="false" autocomplete="off">
+                </div>
+                <div id="console-hint"></div>
+            </div>
+
+            <!-- Playground -->
+            <div class="tabpane" data-pane="playground" id="playground">
+                <div class="pg-section">
+                    <span class="hmp-heading">Fast travel (free text)</span>
+                    <div class="pg-row">
+                        <input type="text" id="pg-tele-input" class="hmp-input" value="FT_HW_TrophyRoom" spellcheck="false" autocomplete="off">
+                        <button class="hmp-btn" id="pg-tele-go">Teleport</button>
+                    </div>
+                </div>
+                <div class="pg-section">
+                    <span class="hmp-heading">Spawn actor</span>
+                    <div class="pg-row">
+                        <input type="text" id="pg-spawn-input" class="hmp-input" value="BlueprintGeneratedClass /Game/Pawn/NPC/Creature/GreyCat/BP_GreyCat_Creature.BP_GreyCat_Creature_C" spellcheck="false" autocomplete="off">
+                    </div>
+                    <div class="pg-row">
+                        <button class="hmp-btn" id="pg-spawn-go">Spawn Actor</button>
+                        <button class="hmp-btn" id="pg-destroy">Destroy Spawned</button>
+                    </div>
+                </div>
+                <div class="pg-section">
+                    <span class="hmp-heading">Student proxies</span>
+                    <div class="pg-row">
+                        <span>Active: <span class="pg-status" id="pg-students">0</span></span>
+                        <label>Count</label>
+                        <input type="number" id="pg-count" min="1" max="10" value="1">
+                        <button class="hmp-btn" id="pg-students-spawn">Spawn</button>
+                        <button class="hmp-btn" id="pg-students-despawn">Despawn All</button>
+                    </div>
+                </div>
+                <div class="pg-section">
+                    <span class="hmp-heading">Appearance harvest</span>
+                    <div class="pg-row">
+                        <button class="hmp-btn" id="pg-dump">Dump Nearby NPC Appearances</button>
+                        <button class="hmp-btn" id="pg-dump-me">Dump My Appearance</button>
+                        <span style="color:var(--hmp-gold-dim);font-size:11px;">(logs to AppearanceDump channel)</span>
+                    </div>
+                </div>
+                <div class="pg-section">
+                    <span class="hmp-heading">Broom rider</span>
+                    <div class="pg-row">
+                        <span>Status: <span class="pg-status" id="pg-broom">&mdash;</span></span>
+                    </div>
+                    <div class="pg-row">
+                        <button class="hmp-btn" id="pg-broom-mount">Mount Student</button>
+                        <button class="hmp-btn" id="pg-broom-dismount">Dismount Student</button>
+                        <button class="hmp-btn" id="pg-broom-cleanup">Cleanup Broom</button>
+                    </div>
+                </div>
+                <div class="pg-section">
+                    <span class="hmp-heading">Locomotion (first student proxy)</span>
+                    <div class="pg-row">
+                        <span>Status: <span class="pg-status" id="pg-loco">&mdash;</span></span>
+                        <span>My speed: <span class="pg-status" id="pg-myspeed">0</span> cm/s</span>
+                    </div>
+                    <div class="pg-row">
+                        <button class="hmp-btn" id="pg-loco-idle">Idle</button>
+                        <button class="hmp-btn" id="pg-loco-walk">Walk</button>
+                        <button class="hmp-btn" id="pg-loco-run">Run</button>
+                        <button class="hmp-btn" id="pg-loco-sprint">Sprint</button>
+                        <button class="hmp-btn" id="pg-loco-jump">Jump</button>
+                    </div>
+                    <div class="pg-row">
+                        <span style="color:var(--hmp-gold-dim);font-size:11px;">Probe: play the game's move blendspace single-node and drive it from the gait speed (smooth blend, no AnimBP):</span>
+                        <button class="hmp-btn" id="pg-loco-blend">BlendSpace on/off</button>
+                        <button class="hmp-btn" id="pg-anim-diff">Dump anim scaffolding (log)</button>
+                        <button class="hmp-btn" id="pg-dodge">Dodge roll (montage test)</button>
+                        <button class="hmp-btn" id="pg-montage-watch">Watch local montages (log)</button>
+                        <button class="hmp-btn" id="pg-spell-dump">Dump spell API (log)</button>
+                        <button class="hmp-btn" id="pg-active-spell">Probe active spell (log)</button>
+                        <button class="hmp-btn" id="pg-cast-test">Cast test spell on proxy</button>
+                        <button class="hmp-btn" id="pg-lumos-probe">Probe Lumos/wand-light (log)</button>
+                        <button class="hmp-btn" id="pg-wand-probe">Probe wand-drawn (log)</button>
+                        <button class="hmp-btn" id="pg-wand-watch">Watch wand (log)</button>
+                    </div>
+                    <div class="pg-row">
+                        <span style="color:var(--hmp-gold-dim);font-size:11px;">Walk direction trim (find the value where it walks straight):</span>
+                        <button class="hmp-btn" id="pg-loco-dir-minus">Dir &minus;15&deg;</button>
+                        <button class="hmp-btn" id="pg-loco-dir-plus">Dir +15&deg;</button>
+                    </div>
+                    <div class="pg-row">
+                        <span style="color:var(--hmp-gold-dim);font-size:11px;">Ground offset trim (dial until the feet sit on the floor):</span>
+                        <button class="hmp-btn" id="pg-loco-lower">Lower 10cm</button>
+                        <button class="hmp-btn" id="pg-loco-raise">Raise 10cm</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Teleport -->
+            <div class="tabpane" data-pane="teleport">
+                <input id="teleport-filter" class="hmp-input" placeholder="Filter locations&hellip;" spellcheck="false" autocomplete="off">
+                <div id="teleport-list" class="hmp-scroll"></div>
+                <div class="pane-actions">
+                    <button class="hmp-btn primary" id="teleport-go">Teleport</button>
+                </div>
+            </div>
+
+            <!-- Web debug -->
+            <div class="tabpane" data-pane="webdebug">
+                <pre id="webdebug-body">no data</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connect screen (main menu) -->
+    <div id="connect" class="hmp-panel">
+        <div class="head">
+            <span class="hmp-heading">Join a Server</span>
+        </div>
+        <div id="connect-body">
+            <label for="connect-ip">Server address</label>
+            <input id="connect-ip" class="hmp-input" spellcheck="false" autocomplete="off">
+            <label for="connect-nick" id="connect-nick-label">Nickname</label>
+            <input id="connect-nick" class="hmp-input" maxlength="31" spellcheck="false" autocomplete="off">
+            <div id="connect-discord"></div>
+        </div>
+        <div class="actions">
+            <button class="hmp-btn primary" id="connect-go">Connect</button>
+            <button class="hmp-btn" id="connect-offline">Play Offline</button>
+        </div>
+    </div>
+
+    <script>
+        (() => {
+            const $ = (id) => document.getElementById(id);
+            const fire = (name, payload) => {
+                if (window.callEvent) callEvent(name, payload);
+            };
+
+            let bannerTimer = 0;
+
+            // ---- Dev menu / tabs -----------------------------------------
+            const devmenuEl = $("devmenu");
+            const tabButtons = devmenuEl.querySelectorAll(".tab[data-tab]");
+            const panes = devmenuEl.querySelectorAll(".tabpane");
+
+            function selectTab(tab) {
+                tabButtons.forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+                panes.forEach((p) => p.classList.toggle("active", p.dataset.pane === tab));
+                fire("devmenu:tab", tab);
+                if (tab === "console") inputEl.focus();
+                else if (tab === "teleport") teleFilterEl.focus();
+            }
+
+            tabButtons.forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
+            $("devmenu-close").addEventListener("click", () => { hmpHud.devmenu.close(); fire("devmenu:close", null); });
+            devmenuEl.addEventListener("keydown", (e) => {
+                if (e.key === "Escape") { hmpHud.devmenu.close(); fire("devmenu:close", null); e.preventDefault(); }
+            });
+
+            // ---- Console --------------------------------------------------
+            const logEl = $("console-log");
+            const inputEl = $("console-input");
+            const hintEl = $("console-hint");
+            const MAX_LINES = 500;
+
+            let commands = [];
+            const history = [];
+            let historyPos = -1;
+            let stash = "";
+
+            const LVL = {
+                "[info]": "lvl-info", "[debug]": "lvl-debug", "[error]": "lvl-error",
+                "[warning]": "lvl-warning", "[warn]": "lvl-warning", "[trace]": "lvl-trace",
+                "[critical]": "lvl-critical"
+            };
+
+            function appendLine(text) {
+                const line = document.createElement("div");
+                line.className = "line";
+                const m = text.match(/^\s*(\[[^\]]*\])\s*(\[[^\]]*\])\s*(\[[^\]]*\])([\s\S]*)$/);
+                if (m) {
+                    const lvlCls = LVL[m[3].toLowerCase()] || "lvl-other";
+                    const span = (cls, t) => {
+                        const s = document.createElement("span");
+                        s.className = cls;
+                        s.textContent = t;
+                        return s;
+                    };
+                    line.appendChild(span("lg-time", m[1] + " "));
+                    line.appendChild(span("lg-name", m[2] + " "));
+                    line.appendChild(span(lvlCls, m[3]));
+                    line.appendChild(span("lg-msg", m[4]));
+                }
+                else {
+                    line.textContent = text;
+                }
+                logEl.appendChild(line);
+                while (logEl.children.length > MAX_LINES) {
+                    logEl.removeChild(logEl.firstChild);
+                }
+            }
+
+            function atBottom() {
+                return logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 24;
+            }
+
+            function commonPrefix(list) {
+                if (!list.length) return "";
+                let p = list[0];
+                for (const s of list) {
+                    let i = 0;
+                    while (i < p.length && i < s.length && p[i] === s[i]) i++;
+                    p = p.slice(0, i);
+                }
+                return p;
+            }
+
+            function updateHint() {
+                const word = inputEl.value.split(/\s+/)[0] || "";
+                if (!word) { hintEl.textContent = ""; return; }
+                const matches = commands.filter((c) => c.startsWith(word));
+                hintEl.textContent = matches.length && matches[0] !== word ? matches.join("   ") : "";
+            }
+
+            inputEl.addEventListener("input", updateHint);
+
+            inputEl.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    const text = inputEl.value.trim();
+                    if (text) {
+                        fire("console:exec", text);
+                        history.unshift(text);
+                        if (history.length > 100) history.pop();
+                    }
+                    historyPos = -1;
+                    stash = "";
+                    inputEl.value = "";
+                    updateHint();
+                    e.preventDefault();
+                }
+                else if (e.key === "Tab") {
+                    const word = inputEl.value.split(/\s+/)[0] || "";
+                    const matches = commands.filter((c) => c.startsWith(word));
+                    if (matches.length === 1) inputEl.value = matches[0] + " ";
+                    else if (matches.length > 1) {
+                        const cp = commonPrefix(matches);
+                        if (cp.length > word.length) inputEl.value = cp;
+                    }
+                    updateHint();
+                    e.preventDefault();
+                }
+                else if (e.key === "ArrowUp") {
+                    if (history.length) {
+                        if (historyPos === -1) stash = inputEl.value;
+                        historyPos = Math.min(historyPos + 1, history.length - 1);
+                        inputEl.value = history[historyPos];
+                    }
+                    e.preventDefault();
+                }
+                else if (e.key === "ArrowDown") {
+                    if (historyPos > 0) {
+                        historyPos--;
+                        inputEl.value = history[historyPos];
+                    }
+                    else if (historyPos === 0) {
+                        historyPos = -1;
+                        inputEl.value = stash;
+                    }
+                    e.preventDefault();
+                }
+            });
+
+            $("console-level").addEventListener("change", (e) => fire("console:setlevel", e.target.value));
+
+            // ---- Teleport tab --------------------------------------------
+            const teleListEl = $("teleport-list");
+            const teleFilterEl = $("teleport-filter");
+            let locations = [];
+            let teleSelected = null;
+
+            function renderLocations() {
+                const f = teleFilterEl.value.toLowerCase();
+                teleListEl.innerHTML = "";
+                for (const name of locations) {
+                    if (f && name.toLowerCase().indexOf(f) === -1) continue;
+                    const el = document.createElement("div");
+                    el.className = "loc" + (name === teleSelected ? " sel" : "");
+                    el.textContent = name;
+                    el.addEventListener("click", () => { teleSelected = name; renderLocations(); });
+                    el.addEventListener("dblclick", () => { teleSelected = name; doTeleport(); });
+                    teleListEl.appendChild(el);
+                }
+            }
+
+            function doTeleport() {
+                if (teleSelected) fire("hud:teleport", teleSelected);
+            }
+
+            teleFilterEl.addEventListener("input", renderLocations);
+            $("teleport-go").addEventListener("click", doTeleport);
+
+            // ---- Playground tab ------------------------------------------
+            $("pg-tele-go").addEventListener("click", () => {
+                const loc = $("pg-tele-input").value.trim();
+                if (loc) fire("hud:teleport", loc);
+            });
+            $("pg-spawn-go").addEventListener("click", () => {
+                const obj = $("pg-spawn-input").value.trim();
+                if (obj) fire("pg:spawn", obj);
+            });
+            $("pg-destroy").addEventListener("click", () => fire("pg:destroy", null));
+            $("pg-students-spawn").addEventListener("click", () => fire("pg:students-spawn", String($("pg-count").value || 1)));
+            $("pg-students-despawn").addEventListener("click", () => fire("pg:students-despawn", null));
+            $("pg-dump").addEventListener("click", () => fire("pg:dump", null));
+            $("pg-dump-me").addEventListener("click", () => fire("pg:dump-me", null));
+            $("pg-broom-mount").addEventListener("click", () => fire("pg:broom-mount", null));
+            $("pg-broom-dismount").addEventListener("click", () => fire("pg:broom-dismount", null));
+            $("pg-broom-cleanup").addEventListener("click", () => fire("pg:broom-cleanup", null));
+            $("pg-loco-idle").addEventListener("click", () => fire("pg:loco-gait", "idle"));
+            $("pg-loco-walk").addEventListener("click", () => fire("pg:loco-gait", "walk"));
+            $("pg-loco-run").addEventListener("click", () => fire("pg:loco-gait", "run"));
+            $("pg-loco-sprint").addEventListener("click", () => fire("pg:loco-gait", "sprint"));
+            $("pg-loco-jump").addEventListener("click", () => fire("pg:loco-jump", null));
+            $("pg-loco-blend").addEventListener("click", () => fire("pg:loco-blend", null));
+            $("pg-anim-diff").addEventListener("click", () => fire("pg:anim-diff", null));
+            $("pg-dodge").addEventListener("click", () => fire("pg:dodge", null));
+            $("pg-montage-watch").addEventListener("click", () => fire("pg:montage-watch", null));
+            $("pg-spell-dump").addEventListener("click", () => fire("pg:spell-dump", null));
+            $("pg-active-spell").addEventListener("click", () => fire("pg:active-spell", null));
+            $("pg-cast-test").addEventListener("click", () => fire("pg:cast-test", null));
+            $("pg-lumos-probe").addEventListener("click", () => fire("pg:lumos-probe", null));
+            $("pg-wand-probe").addEventListener("click", () => fire("pg:wand-probe", null));
+            $("pg-wand-watch").addEventListener("click", () => fire("pg:wand-watch", null));
+            $("pg-loco-dir-minus").addEventListener("click", () => fire("pg:loco-dir", "-"));
+            $("pg-loco-dir-plus").addEventListener("click", () => fire("pg:loco-dir", "+"));
+            $("pg-loco-lower").addEventListener("click", () => fire("pg:loco-z", "down"));
+            $("pg-loco-raise").addEventListener("click", () => fire("pg:loco-z", "up"));
+
+            // ---- Connect screen ------------------------------------------
+            const connectEl = $("connect");
+            const cIp = $("connect-ip");
+            const cNick = $("connect-nick");
+            const cNickLabel = $("connect-nick-label");
+            const cDiscord = $("connect-discord");
+
+            function submitConnect() {
+                fire("connect:submit", JSON.stringify({ host: cIp.value.trim(), nickname: cNick.value.trim() }));
+            }
+
+            $("connect-go").addEventListener("click", submitConnect);
+            $("connect-offline").addEventListener("click", () => fire("connect:offline", null));
+            cIp.addEventListener("keydown", (e) => { if (e.key === "Enter") { submitConnect(); e.preventDefault(); } });
+            cNick.addEventListener("keydown", (e) => { if (e.key === "Enter") { submitConnect(); e.preventDefault(); } });
+
+            // ---- Public bridge -------------------------------------------
+            window.hmpHud = {
+                setHud(v) {
+                    if (v.framework !== undefined) $("hud-fw").textContent = v.framework;
+                    if (v.mod !== undefined) $("hud-mod").textContent = v.mod;
+                    if (v.connection !== undefined) $("hud-conn").textContent = v.connection;
+                    if (v.ping !== undefined) $("hud-ping").textContent = v.ping;
+                },
+                setBanner(text) {
+                    const el = $("hud-banner");
+                    clearTimeout(bannerTimer);
+                    el.textContent = text || "";
+                    el.classList.remove("fade-out");
+                    el.classList.toggle("show", !!text);
+                    if (text) {
+                        bannerTimer = setTimeout(() => el.classList.add("fade-out"), 5000);
+                    }
+                },
+                devmenu: {
+                    open(tab) {
+                        devmenuEl.classList.add("open");
+                        selectTab(tab || "console");
+                    },
+                    close() { devmenuEl.classList.remove("open"); },
+                    selectTab(tab) { if (devmenuEl.classList.contains("open")) selectTab(tab); },
+                    isOpen() { return devmenuEl.classList.contains("open"); }
+                },
+                console: {
+                    addLines(lines) {
+                        const stick = atBottom();
+                        for (const l of lines) appendLine(l);
+                        if (stick) logEl.scrollTop = logEl.scrollHeight;
+                    },
+                    setCommands(list) { commands = list || []; },
+                    setLevel(level) { $("console-level").value = level; }
+                },
+                teleport: {
+                    setLocations(list) { locations = list || []; renderLocations(); }
+                },
+                webdebug: {
+                    set(text) { $("webdebug-body").textContent = text; }
+                },
+                playground: {
+                    setState(s) {
+                        if (s.students !== undefined) $("pg-students").textContent = s.students;
+                        if (s.broom !== undefined) $("pg-broom").textContent = s.broom;
+                        if (s.loco !== undefined) $("pg-loco").textContent = s.loco;
+                        if (s.myspeed !== undefined) $("pg-myspeed").textContent = s.myspeed;
+                    }
+                },
+                connect: {
+                    open(o) {
+                        o = o || {};
+                        connectEl.classList.add("open");
+                        cIp.value = o.ip || "127.0.0.1";
+                        if (o.discord) {
+                            cNick.value = o.nickname || "";
+                            cNick.style.display = "none";
+                            cNickLabel.style.display = "none";
+                            cDiscord.textContent = "Nickname: " + (o.nickname || "") + " (via Discord)";
+                            cDiscord.style.display = "block";
+                        }
+                        else {
+                            cNick.value = o.nickname || "Player";
+                            cNick.style.display = "";
+                            cNickLabel.style.display = "";
+                            cDiscord.style.display = "none";
+                        }
+                        cIp.focus();
+                    },
+                    close() { connectEl.classList.remove("open"); },
+                    isOpen() { return connectEl.classList.contains("open"); }
+                }
+            };
+
+            // Standalone styling check:
+            //   web --url http://hogwarts.ui/hud.html?demo --nofocus           (dev menu)
+            //   web --url http://hogwarts.ui/hud.html?demo=connect --nofocus   (connect screen)
+            if (location.search.indexOf("demo") !== -1) {
+                hmpHud.setHud({ framework: "Framework 0.0.0 (demo)", mod: "HogwartsMP 0.0.0 (demo)", connection: "Offline", ping: "0" });
+                commands = ["help", "tele", "weather", "time", "webdebug", "disconnect", "exit"];
+                ["[12:00:00] [Console] [info] Welcome to the console.",
+                 "[12:00:01] [Web] [debug] hud.html loaded.",
+                 "[12:00:02] [Net] [warning] high ping detected."].forEach(appendLine);
+                hmpHud.teleport.setLocations(["FT_CentralHogsmeade", "FT_HW_GreatHall", "FT_HW_Library"]);
+                hmpHud.playground.setState({ students: 3, broom: "idle" });
+                hmpHud.webdebug.set("views: 2  dying: 0\nfree srv slots: 30/32");
+                if (location.search.indexOf("connect") !== -1) {
+                    hmpHud.connect.open({ ip: "127.0.0.1", nickname: "Player", discord: false });
+                }
+                else {
+                    hmpHud.devmenu.open("console");
+                }
+            }
+
+            fire("hud:ready", null);
+        })();
+    </script>
+</body>
+</html>

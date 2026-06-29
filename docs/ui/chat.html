@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>HogwartsMP Chat</title>
+    <link rel="stylesheet" href="theme.css">
+    <style>
+        #chat {
+            position: fixed;
+            right: 24px;
+            /* below the version/connection corner text overlay */
+            top: 130px;
+            width: 460px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Closed: bare floating message lines over the game. The panel chrome
+           (defined as .hmp-panel in theme.css) only appears while open. */
+        #chat:not(.open) {
+            background: none;
+            border-color: transparent;
+            box-shadow: none;
+        }
+
+        #chat:not(.open)::before,
+        #chat:not(.open)::after {
+            display: none;
+        }
+
+        #messages {
+            max-height: 38vh;
+            overflow: hidden;
+            padding: 10px 12px 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        #chat.open #messages {
+            overflow-y: auto;
+        }
+
+        .msg {
+            font-size: 15px;
+            line-height: 1.35;
+            text-shadow:
+                0 1px 2px rgba(0, 0, 0, 0.9),
+                0 0 6px rgba(0, 0, 0, 0.6);
+            overflow-wrap: break-word;
+            opacity: 1;
+            transition: opacity 1.2s ease;
+        }
+
+        /* Old messages fade away while the chat is closed but reappear when
+           the history is opened */
+        #chat:not(.open) .msg.faded {
+            opacity: 0;
+        }
+
+        #input-row {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px 10px;
+        }
+
+        #chat.open #input-row {
+            display: flex;
+        }
+
+        #input-row .prompt {
+            color: var(--hmp-gold-bright);
+            font-size: 13px;
+        }
+
+        #input {
+            flex: 1;
+            padding: 4px 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="chat" class="hmp-panel">
+        <div id="messages" class="hmp-scroll"></div>
+        <div id="input-row">
+            <span class="prompt">&#10022;</span>
+            <input id="input" class="hmp-input" maxlength="240" spellcheck="false" autocomplete="off">
+        </div>
+    </div>
+
+    <script>
+        (() => {
+            const chat = document.getElementById("chat");
+            const list = document.getElementById("messages");
+            const input = document.getElementById("input");
+
+            const MAX_MESSAGES = 100;
+            const FADE_AFTER_MS = 10000;
+
+            function scrollToBottom() {
+                list.scrollTop = list.scrollHeight;
+            }
+
+            window.hmpChat = {
+                addMessage(text) {
+                    const el = document.createElement("div");
+                    el.className = "msg";
+                    el.textContent = text;
+                    list.appendChild(el);
+                    while (list.children.length > MAX_MESSAGES) {
+                        list.removeChild(list.firstChild);
+                    }
+                    setTimeout(() => el.classList.add("faded"), FADE_AFTER_MS);
+                    scrollToBottom();
+                },
+                open() {
+                    chat.classList.add("open");
+                    input.value = "";
+                    input.focus();
+                    scrollToBottom();
+                },
+                close() {
+                    chat.classList.remove("open");
+                    input.blur();
+                }
+            };
+
+            // Tell the client we want to give input back (it unfocuses the
+            // view and releases the game controls)
+            function requestClose() {
+                window.hmpChat.close();
+                if (window.callEvent) {
+                    callEvent("chat:close", null);
+                }
+            }
+
+            input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    const text = input.value.trim();
+                    if (text && window.callEvent) {
+                        callEvent("chat:send", text);
+                    }
+                    requestClose();
+                    e.preventDefault();
+                }
+                else if (e.key === "Escape") {
+                    requestClose();
+                    e.preventDefault();
+                }
+            });
+
+            // Standalone styling check (web --url http://hogwarts.ui/chat.html?demo --nofocus):
+            // an empty closed chat renders nothing, so seed it and show the chrome
+            if (location.search.indexOf("demo") !== -1) {
+                [
+                    "Welcome to Hogwarts Legacy Multiplayer",
+                    "Albus: The castle looks lovely tonight.",
+                    "You: Testing the chat overlay."
+                ].forEach((m) => window.hmpChat.addMessage(m));
+                window.hmpChat.open();
+            }
+
+            if (window.callEvent) {
+                callEvent("chat:ready", null);
+            }
+        })();
+    </script>
+</body>
+</html>
