@@ -479,10 +479,17 @@
                     <span class="hmp-heading">Appearance harvest</span>
                     <div class="pg-row">
                         <button class="hmp-btn" id="pg-dump">Dump Nearby NPC Appearances</button>
-                        <button class="hmp-btn" id="pg-dump-me">Dump My Appearance</button>
+                        <!-- TODO: re-enable when RequestLocalDump is wired on main -->
+                        <!-- <button class="hmp-btn" id="pg-dump-me">Dump My Appearance</button> -->
                         <span style="color:var(--hmp-gold-dim);font-size:11px;">(logs to AppearanceDump channel)</span>
                     </div>
                 </div>
+                <!-- TODO: re-enable the Broom rider + Locomotion sections once those experiments are
+                     ported to the main client. The main build has no C++ handler for their events
+                     (pg:broom-*, pg:loco-*, pg:anim-diff, pg:dodge, pg:montage-watch, pg:spell-*,
+                     pg:cast-test, pg:*-probe, pg:wand-watch), and PushPlayground only sends `students`
+                     (so pg-broom/pg-loco/pg-myspeed never update). Their JS listeners are commented
+                     out below too — restore both blocks together.
                 <div class="pg-section">
                     <span class="hmp-heading">Broom rider</span>
                     <div class="pg-row">
@@ -531,6 +538,7 @@
                         <button class="hmp-btn" id="pg-loco-raise">Raise 10cm</button>
                     </div>
                 </div>
+                -->
             </div>
 
             <!-- Teleport -->
@@ -750,6 +758,11 @@
             $("pg-students-spawn").addEventListener("click", () => fire("pg:students-spawn", String($("pg-count").value || 1)));
             $("pg-students-despawn").addEventListener("click", () => fire("pg:students-despawn", null));
             $("pg-dump").addEventListener("click", () => fire("pg:dump", null));
+            /* TODO: re-enable when the broom / locomotion / spell experiments are ported to the
+               main client. These emit events (pg:dump-me, pg:broom-*, pg:loco-*, pg:anim-diff,
+               pg:dodge, pg:montage-watch, pg:spell-*, pg:cast-test, pg:*-probe, pg:wand-watch)
+               that the current main build has no C++ handler for. Their buttons are commented out
+               in the markup above too — restore both together. (Listeners on missing elements throw.)
             $("pg-dump-me").addEventListener("click", () => fire("pg:dump-me", null));
             $("pg-broom-mount").addEventListener("click", () => fire("pg:broom-mount", null));
             $("pg-broom-dismount").addEventListener("click", () => fire("pg:broom-dismount", null));
@@ -773,6 +786,7 @@
             $("pg-loco-dir-plus").addEventListener("click", () => fire("pg:loco-dir", "+"));
             $("pg-loco-lower").addEventListener("click", () => fire("pg:loco-z", "down"));
             $("pg-loco-raise").addEventListener("click", () => fire("pg:loco-z", "up"));
+            */
 
             // ---- Connect screen ------------------------------------------
             const connectEl = $("connect");
