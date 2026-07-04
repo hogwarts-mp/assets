@@ -85,7 +85,7 @@
         <div id="messages" class="hmp-scroll"></div>
         <div id="input-row">
             <span class="prompt">&#10022;</span>
-            <input id="input" class="hmp-input" maxlength="240" spellcheck="false" autocomplete="off">
+            <input id="input" class="hmp-input" maxlength="240" spellcheck="false" autocomplete="off" placeholder="&#8593; &#8595; history">
         </div>
     </div>
 
@@ -97,6 +97,19 @@
 
             const MAX_MESSAGES = 100;
             const FADE_AFTER_MS = 10000;
+
+            // Command history (shell-style): Up walks to older entries, Down back toward the newest,
+            // then to the line you were typing. Kept in memory for the page's lifetime.
+            const HISTORY_MAX = 100;
+            const history = [];
+            let histIdx = -1; // -1 = editing a fresh line (not browsing history)
+            let draft = ""; // the in-progress line, saved when you first press Up
+
+            function setInput(value) {
+                input.value = value;
+                const n = value.length;
+                input.setSelectionRange(n, n); // caret to end so typing appends
+            }
 
             function scrollToBottom() {
                 list.scrollTop = list.scrollHeight;
@@ -117,6 +130,8 @@
                 open() {
                     chat.classList.add("open");
                     input.value = "";
+                    histIdx = -1; // start each session on a fresh line, not mid-browse
+                    draft = "";
                     input.focus();
                     scrollToBottom();
                 },
@@ -138,14 +153,49 @@
             input.addEventListener("keydown", (e) => {
                 if (e.key === "Enter") {
                     const text = input.value.trim();
-                    if (text && window.callEvent) {
-                        callEvent("chat:send", text);
+                    if (text) {
+                        // Record for history (skip if identical to the most recent entry).
+                        if (history[history.length - 1] !== text) {
+                            history.push(text);
+                            if (history.length > HISTORY_MAX) history.shift();
+                        }
+                        if (window.callEvent) {
+                            callEvent("chat:send", text);
+                        }
                     }
+                    histIdx = -1;
+                    draft = "";
                     requestClose();
                     e.preventDefault();
                 }
                 else if (e.key === "Escape") {
                     requestClose();
+                    e.preventDefault();
+                }
+                else if (e.key === "ArrowUp") {
+                    if (history.length) {
+                        if (histIdx === -1) {
+                            draft = input.value; // remember the line in progress
+                            histIdx = history.length - 1;
+                        }
+                        else if (histIdx > 0) {
+                            histIdx--;
+                        }
+                        setInput(history[histIdx]);
+                    }
+                    e.preventDefault();
+                }
+                else if (e.key === "ArrowDown") {
+                    if (histIdx !== -1) {
+                        if (histIdx < history.length - 1) {
+                            histIdx++;
+                            setInput(history[histIdx]);
+                        }
+                        else {
+                            histIdx = -1;
+                            setInput(draft); // back to the line you were typing
+                        }
+                    }
                     e.preventDefault();
                 }
             });
