@@ -1,0 +1,96 @@
+<!doctype html>
+<!--
+  ui-demo-html — a HAND-AUTHORED page. This is the "bring your own HTML" path: a server owner who wants
+  full control writes the page themselves (any layout/style), and the client script just opens it and
+  handles its events. Styled in the Arcanum system here for consistency, but that's the author's choice.
+
+  Contract with the client script (client/main.js):
+    native -> page : window.addEventListener("hp:motd", e => ...)   (from UI.send)
+    page   -> resource: callEvent(name, json)                        (arrives as Core.Events "ui:<name>")
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Spectral:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --window: #15120c; --panel: #100d08; --accent: #c9a25a; --bright: #d8b56b; --on-gold: #1a1306;
+        --heading: #f0e3c2; --primary: #e7d8b4; --body: #d5c8a9; --muted: #9c8f74; --faint: #6f6553;
+        --hair: rgba(201,162,90,.14);
+        --cinzel: "Cinzel", Georgia, serif; --spectral: "Spectral", Georgia, serif;
+        --mono: ui-monospace, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        display: grid; place-items: center; background: transparent;
+        font-family: var(--spectral); color: var(--body);
+      }
+      #glow { position: fixed; inset: 0; pointer-events: none;
+        background: radial-gradient(900px 600px at 50% 22%, rgba(201,162,90,.06), transparent 60%); }
+
+      .panel { position: relative; width: 480px; max-width: 92vw; background: var(--window);
+        border: 1px solid var(--hair); border-radius: 6px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+      .titlebar { height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 16px;
+        background: var(--panel); border-bottom: 1px solid var(--hair); }
+      .diamond { width: 8px; height: 8px; background: var(--bright); transform: rotate(45deg); }
+      .word { font-family: var(--cinzel); font-size: 11px; letter-spacing: .22em; color: var(--muted); }
+      .body { padding: 26px 30px; }
+      .body > * + * { margin-top: 16px; }
+
+      .eyebrow { font-family: var(--cinzel); font-size: 10px; letter-spacing: .32em; color: #b89a64; text-transform: uppercase; }
+      h1 { font-family: var(--cinzel); font-weight: 600; font-size: 24px; letter-spacing: .06em; color: var(--heading); margin: 6px 0 0; }
+      p { font-size: 14px; line-height: 1.6; color: #bcae93; margin: 0; }
+
+      .motd { border-left: 3px solid var(--bright); background: rgba(201,162,90,.08); padding: 12px 15px; border-radius: 0 4px 4px 0; }
+      .motd .k { font-family: var(--cinzel); font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: var(--faint); display: block; margin-bottom: 4px; }
+      .motd .v { font-size: 13px; color: var(--primary); }
+
+      .rules { list-style: none; padding: 0; margin: 0; }
+      .rules li { display: flex; gap: 10px; align-items: center; padding: 6px 0; font-size: 13px; color: var(--body); }
+      .rules .dot { width: 7px; height: 7px; transform: rotate(45deg); border: 1px solid var(--bright); flex: none; }
+
+      hr { height: 1px; background: rgba(201,162,90,.08); border: 0; }
+      .footer { display: flex; gap: 10px; justify-content: flex-end; }
+
+      button { font-family: var(--cinzel); font-size: 13px; letter-spacing: .16em; border: 0; border-radius: 4px;
+        padding: 11px 18px; cursor: pointer; color: var(--on-gold);
+        background: linear-gradient(180deg, #dcb96e, #c19a4e); box-shadow: 0 6px 18px rgba(201,162,90,.22); }
+      button:hover { filter: brightness(1.08); }
+      button.ghost { background: transparent; box-shadow: none; border: 1px solid rgba(201,162,90,.25); color: #c2b291; }
+    </style>
+  </head>
+  <body>
+    <div id="glow"></div>
+    <div class="panel">
+      <div class="titlebar"><span class="diamond"></span><span class="word">ARCANUM ONLINE</span></div>
+      <div class="body">
+        <div class="eyebrow">Welcome, Traveller</div>
+        <h1>The Great Hall Awaits</h1>
+        <p>You've arrived at the castle gates. Settle in, mind the moving staircases, and remember your house colours.</p>
+        <div class="motd"><span class="k">Message of the Day</span><span class="v" id="motd">Loading…</span></div>
+        <ul class="rules">
+          <li><span class="dot"></span> Be excellent to your fellow witches and wizards.</li>
+          <li><span class="dot"></span> No duelling in the corridors between classes.</li>
+        </ul>
+        <hr />
+        <div class="footer">
+          <button class="ghost" onclick="callEvent('rules','{}')">Server Rules</button>
+          <button onclick="callEvent('enter','{}')">Enter the Castle</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // native -> page: fill the MOTD line pushed via UI.send(id, "hp:motd", {text}).
+      window.addEventListener("hp:motd", (e) => {
+        if (e.detail && e.detail.text) document.getElementById("motd").textContent = e.detail.text;
+      });
+      // tell the resource we're mounted so it can push the MOTD.
+      callEvent("ready", "{}");
+    </script>
+  </body>
+</html>

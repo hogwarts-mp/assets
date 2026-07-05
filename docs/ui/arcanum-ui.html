@@ -1,0 +1,289 @@
+<!doctype html>
+<!--
+  arcanum-ui — the SHARED, reusable renderer page in the Arcanum design system. Ships once; scripts never
+  edit it. A resource sends a component tree (JSON) via UI.send(view,"arc:render",tree) and receives
+  interactions back via callEvent("arc:event", {id, action, value}). This is the "author UI from JS with
+  predetermined components" host: all styling + widgets live here, authors only send data.
+
+  Node: { "type": "...", "props": {...}, "children": [ ... ] }. Interactive nodes carry props.id; their
+  events come back keyed by that id. Component catalog: see resources/ui/README.md.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Spectral:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0a0805; --window: #15120c; --panel: #100d08; --well: #0e0b07; --card: #16120b;
+        --accent: #c9a25a; --bright: #d8b56b; --on-gold: #1a1306;
+        --heading: #f0e3c2; --primary: #e7d8b4; --body: #d5c8a9; --data: #c2b291; --muted: #9c8f74; --faint: #6f6553;
+        --hair: rgba(201,162,90,.14); --hair-soft: rgba(201,162,90,.08);
+        --track: #2a241a;
+        --cinzel: "Cinzel", Georgia, serif; --spectral: "Spectral", Georgia, serif;
+        --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+        --stripe: repeating-linear-gradient(135deg,#221d16 0 11px,#1b1610 11px 22px);
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      body { display: grid; place-items: center; background: transparent; font-family: var(--spectral); color: var(--body); }
+      #glow { position: fixed; inset: 0; pointer-events: none;
+        background: radial-gradient(900px 600px at 50% 22%, rgba(201,162,90,.06), transparent 60%); }
+      #root { position: relative; }
+
+      /* containers */
+      .arc-panel { width: 480px; max-width: 92vw; background: var(--window); border: 1px solid var(--hair);
+        border-radius: 6px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+      .arc-panel > .body { padding: 26px 30px; }
+      .arc-titlebar { height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 16px;
+        background: var(--panel); border-bottom: 1px solid var(--hair); }
+      .arc-diamond { width: 8px; height: 8px; background: var(--bright); transform: rotate(45deg); flex: none; }
+      .arc-titlebar .word { font-family: var(--cinzel); font-size: 11px; letter-spacing: .22em; color: var(--muted); }
+      .arc-row { display: flex; gap: 10px; align-items: center; }
+      .arc-col { display: flex; flex-direction: column; }
+      .arc-grid { display: grid; gap: 8px; }
+      .arc-scroll { overflow-y: auto; }
+      .arc-scroll::-webkit-scrollbar { width: 8px; }
+      .arc-scroll::-webkit-scrollbar-thumb { background: rgba(201,162,90,.2); border-radius: 4px; }
+      .arc-card { background: var(--card); border: 1px solid var(--hair); border-radius: 5px; padding: 14px 16px; }
+      .arc-spacer { flex: 1; }
+      .arc-divider { height: 1px; background: var(--hair-soft); border: 0; }
+      .stack > * + * { margin-top: 16px; }
+
+      /* text */
+      .arc-eyebrow { font-family: var(--cinzel); font-size: 10px; letter-spacing: .32em; color: #b89a64; text-transform: uppercase; }
+      .arc-heading { font-family: var(--cinzel); font-weight: 600; font-size: 24px; letter-spacing: .06em; color: var(--heading); margin: 6px 0 0; }
+      .arc-subheading { font-family: var(--cinzel); font-weight: 600; font-size: 16px; letter-spacing: .06em; color: var(--primary); margin: 0; }
+      .arc-text { font-size: 14px; line-height: 1.6; color: #bcae93; margin: 0; }
+      .arc-text.muted { color: var(--muted); }
+      .arc-label { font-family: var(--cinzel); font-size: 13px; letter-spacing: .07em; color: var(--primary); }
+      .arc-help { font-size: 12px; color: var(--muted); }
+      .arc-kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+      .arc-kv .k { font-size: 13px; color: var(--muted); }
+      .arc-kv .v { font-family: var(--mono); font-size: 13px; color: var(--data); }
+
+      /* buttons */
+      .arc-btn { font-family: var(--cinzel); font-size: 13px; letter-spacing: .16em; border: 0; border-radius: 4px;
+        padding: 11px 18px; cursor: pointer; color: var(--on-gold);
+        background: linear-gradient(180deg, #dcb96e, #c19a4e); box-shadow: 0 6px 18px rgba(201,162,90,.22);
+        transition: filter .1s ease, transform .06s ease; }
+      .arc-btn:hover { filter: brightness(1.08); }
+      .arc-btn:active { transform: translateY(1px); }
+      .arc-btn.ghost { background: transparent; box-shadow: none; border: 1px solid rgba(201,162,90,.25); color: var(--data); }
+      .arc-btn.small { padding: 7px 12px; font-size: 11px; letter-spacing: .12em; }
+
+      /* badges (tone = meaning) */
+      .arc-badge { font-family: var(--cinzel); font-size: 10px; letter-spacing: .09em; padding: 4px 9px; border-radius: 3px;
+        border: 1px solid rgba(201,162,90,.42); background: rgba(201,162,90,.12); color: var(--bright); display: inline-block; }
+      .arc-badge.red { color: #d2876e; background: rgba(150,60,55,.18); border-color: rgba(165,75,65,.5); }
+      .arc-badge.green { color: #a3bd82; background: rgba(110,140,90,.15); border-color: rgba(125,155,100,.45); }
+      .arc-badge.blue { color: #92b6c0; background: rgba(90,120,132,.15); border-color: rgba(105,135,148,.45); }
+      .arc-badge.online { color: #8aa860; background: rgba(110,140,90,.08); border-color: rgba(120,150,95,.3); }
+      .arc-badge.locked { color: #cf8a72; background: rgba(150,60,55,.16); border-color: rgba(165,75,65,.5); }
+
+      /* segmented */
+      .arc-seg { display: inline-flex; border: 1px solid rgba(201,162,90,.2); border-radius: 4px; overflow: hidden; }
+      .arc-seg > button { font-family: var(--cinzel); font-size: 12px; letter-spacing: .08em; padding: 9px 14px; border: 0;
+        background: transparent; color: var(--muted); cursor: pointer; border-left: 1px solid rgba(201,162,90,.14); }
+      .arc-seg > button:first-child { border-left: 0; }
+      .arc-seg > button.active { background: rgba(201,162,90,.16); color: #ecdcb7; }
+
+      /* toggle */
+      .arc-toggle { width: 44px; height: 24px; border-radius: 12px; background: var(--track); position: relative; cursor: pointer; transition: background .12s ease; flex: none; }
+      .arc-toggle .knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--faint); transition: left .12s ease, background .12s ease; }
+      .arc-toggle.on { background: #c19a4e; }
+      .arc-toggle.on .knob { left: 23px; background: var(--on-gold); }
+
+      /* select + input (input-well) */
+      .arc-select, .arc-input { font-family: var(--spectral); font-size: 13px; color: var(--body); background: var(--well);
+        border: 1px solid rgba(201,162,90,.18); border-radius: 4px; padding: 10px 12px; outline: none; }
+      .arc-select { appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 30px;
+        background-image: linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+        background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+      .arc-input::placeholder { color: var(--faint); }
+      .arc-input:focus, .arc-select:focus { border-color: rgba(201,162,90,.42); }
+
+      /* slider */
+      .arc-slider-wrap { display: flex; align-items: center; gap: 12px; }
+      .arc-slider { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px; background: var(--track); outline: none; flex: 1; }
+      .arc-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+        background: var(--accent); box-shadow: 0 0 0 3px rgba(201,162,90,.2); cursor: pointer; }
+      .arc-slider-val { font-family: var(--mono); font-size: 12px; color: var(--data); min-width: 46px; text-align: right; }
+
+      /* fill bar */
+      .arc-bar { height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+      .arc-bar > i { display: block; height: 100%; background: var(--accent); }
+      .arc-bar.full > i { background: #8f4a44; }
+
+      /* stat card */
+      .arc-stat { background: var(--well); border: 1px solid rgba(201,162,90,.12); border-radius: 4px; padding: 12px 14px; }
+      .arc-stat .lab { font-family: var(--cinzel); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+      .arc-stat .val { font-family: var(--mono); font-size: 18px; color: var(--primary); margin-top: 4px; }
+      .arc-stat .val .unit { font-size: 12px; color: var(--muted); margin-left: 3px; }
+
+      /* media placeholders */
+      .arc-banner { position: relative; border-radius: 5px; overflow: hidden; background: var(--stripe); }
+      .arc-banner .scrim { position: absolute; inset: 0; background: linear-gradient(180deg, transparent 40%, rgba(16,13,8,.92)); }
+      .arc-banner .cap { position: absolute; top: 50%; left: 0; right: 0; transform: translateY(-50%); text-align: center; font-family: var(--mono); font-size: 11px; color: #5e553f; }
+      .arc-banner .ov { position: absolute; left: 18px; bottom: 14px; right: 18px; }
+      .arc-banner .ov .t { font-family: var(--cinzel); font-size: 20px; color: #f3e7c6; letter-spacing: .04em; }
+      .arc-banner .ov .s { font-size: 12px; color: var(--data); margin-top: 2px; }
+      .arc-image { border-radius: 5px; background: var(--stripe); display: grid; place-items: center; color: #5e553f; font-family: var(--mono); font-size: 11px; }
+      .arc-avatar { border-radius: 50%; background: repeating-linear-gradient(135deg,#2a2318 0 6px,#221c13 6px 12px);
+        border: 1px solid rgba(201,162,90,.4); display: grid; place-items: center; font-family: var(--cinzel); color: var(--bright); flex: none; }
+
+      /* list + rows */
+      .arc-list { background: var(--card); border: 1px solid var(--hair); border-radius: 5px; overflow: hidden; }
+      .arc-listrow { display: flex; align-items: center; gap: 12px; padding: 12px 15px; border-top: 1px solid rgba(201,162,90,.06); }
+      .arc-listrow:first-child { border-top: 0; }
+      .arc-listrow.tappable { cursor: pointer; }
+      .arc-listrow.tappable:hover { background: rgba(201,162,90,.05); }
+      .arc-listrow .title { font-family: var(--cinzel); font-size: 14px; color: #ddd0b2; letter-spacing: .04em; }
+      .arc-listrow .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .arc-listrow .right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+      /* inventory slot */
+      .arc-slot { position: relative; aspect-ratio: 1; background: var(--stripe); border: 1px solid rgba(201,162,90,.14); border-radius: 4px; cursor: default; }
+      .arc-slot.tappable { cursor: pointer; }
+      .arc-slot.tappable:hover { border-color: rgba(201,162,90,.45); }
+      .arc-slot.rare { border-color: rgba(146,182,192,.5); }
+      .arc-slot.epic { border-color: rgba(163,133,210,.55); }
+      .arc-slot .nm { position: absolute; left: 4px; right: 4px; bottom: 4px; font-size: 9px; color: var(--data); text-align: center;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .arc-slot .ct { position: absolute; top: 3px; right: 4px; font-family: var(--mono); font-size: 10px; color: var(--primary); }
+
+      .arc-field-stacked { display: flex; flex-direction: column; gap: 9px; }
+      .arc-field-stacked .arc-seg { display: flex; }
+      .arc-field-stacked .arc-seg > button { flex: 1; padding-left: 6px; padding-right: 6px; text-align: center; letter-spacing: .05em; }
+      .arc-field-stacked .arc-select, .arc-field-stacked .arc-input { width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="glow"></div>
+    <div id="root"></div>
+
+    <script>
+      function emit(id, action, value) {
+        if (!id) return;
+        callEvent("arc:event", JSON.stringify({ id, action, value: value === undefined ? null : value }));
+      }
+
+      const build = (n) => (n && registry[n.type] ? registry[n.type](n) : document.createTextNode(""));
+      const kids = (n, e) => (n.children || []).forEach((c) => e.appendChild(build(c)));
+      const el = (cls, tag = "div") => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+      const px = (v, d) => (v == null ? d : typeof v === "number" ? v + "px" : v);
+      const P = (n) => n.props || {};
+
+      const registry = {
+        // containers
+        panel(n) {
+          const p = el("arc-panel");
+          if (P(n).title) { const tb = el("arc-titlebar"); tb.appendChild(el("arc-diamond"));
+            const w = el("word", "span"); w.textContent = P(n).title; tb.appendChild(w); p.appendChild(tb); }
+          const body = el("body stack"); if (P(n).width) p.style.width = px(P(n).width); kids(n, body); p.appendChild(body); return p;
+        },
+        row(n) { const e = el("arc-row"); if (P(n).justify) e.style.justifyContent = P(n).justify; if (P(n).gap != null) e.style.gap = px(P(n).gap); kids(n, e); return e; },
+        col(n) { const e = el("arc-col" + (P(n).stack === false ? "" : " stack")); if (P(n).gap != null) e.style.gap = px(P(n).gap); kids(n, e); return e; },
+        grid(n) { const e = el("arc-grid"); e.style.gridTemplateColumns = "repeat(" + (P(n).cols || 4) + ",1fr)"; if (P(n).gap != null) e.style.gap = px(P(n).gap); kids(n, e); return e; },
+        scroll(n) { const e = el("arc-scroll stack"); e.style.maxHeight = px(P(n).maxHeight, "260px"); kids(n, e); return e; },
+        card(n) { const e = el("arc-card stack"); kids(n, e); return e; },
+        spacer() { return el("arc-spacer"); },
+        divider() { return el("arc-divider", "hr"); },
+
+        // text
+        eyebrow(n) { const e = el("arc-eyebrow"); e.textContent = P(n).text || ""; return e; },
+        heading(n) { const e = el("arc-heading", "h1"); e.textContent = P(n).text || ""; return e; },
+        subheading(n) { const e = el("arc-subheading", "h2"); e.textContent = P(n).text || ""; return e; },
+        text(n) { const e = el("arc-text" + (P(n).muted ? " muted" : ""), "p"); e.textContent = P(n).text || ""; return e; },
+        label(n) { const e = el("arc-label"); e.textContent = P(n).text || ""; return e; },
+        kv(n) { const e = el("arc-kv"); const k = el("k", "span"); k.textContent = P(n).label || "";
+          const v = el("v", "span"); v.textContent = P(n).value != null ? P(n).value : ""; e.appendChild(k); e.appendChild(v); return e; },
+
+        // controls
+        button(n) { const b = el("arc-btn" + (P(n).variant === "ghost" ? " ghost" : "") + (P(n).size === "small" ? " small" : ""), "button");
+          b.textContent = P(n).label || ""; b.onclick = () => emit(P(n).id, "click"); return b; },
+        segmented(n) {
+          const wrap = el("arc-seg"); const opts = P(n).options || [];
+          let cur = P(n).value != null ? P(n).value : (opts[0] && opts[0].value);
+          opts.forEach((o) => { const b = document.createElement("button"); b.textContent = o.label; if (o.value === cur) b.classList.add("active");
+            b.onclick = () => { cur = o.value; [...wrap.children].forEach((c) => c.classList.remove("active")); b.classList.add("active"); emit(P(n).id, "change", o.value); };
+            wrap.appendChild(b); });
+          return wrap;
+        },
+        toggle(n) { const t = el("arc-toggle" + (P(n).value ? " on" : "")); t.appendChild(el("knob"));
+          t.onclick = () => { const on = !t.classList.contains("on"); t.classList.toggle("on", on); emit(P(n).id, "change", on); }; return t; },
+        select(n) { const s = el("arc-select", "select");
+          (P(n).options || []).forEach((o) => { const op = document.createElement("option"); op.value = o.value; op.textContent = o.label;
+            if (o.value === P(n).value) op.selected = true; s.appendChild(op); });
+          s.onchange = () => emit(P(n).id, "change", s.value); return s; },
+        input(n) { const i = el("arc-input", "input"); i.type = P(n).kind || "text"; if (P(n).placeholder) i.placeholder = P(n).placeholder;
+          if (P(n).value != null) i.value = P(n).value;
+          i.onchange = () => emit(P(n).id, "change", i.value);
+          i.onkeydown = (e) => { if (e.key === "Enter") emit(P(n).id, "submit", i.value); }; return i; },
+        slider(n) { const wrap = el("arc-slider-wrap"); const s = el("arc-slider", "input"); s.type = "range";
+          s.min = P(n).min != null ? P(n).min : 0; s.max = P(n).max != null ? P(n).max : 100; s.step = P(n).step || 1;
+          s.value = P(n).value != null ? P(n).value : s.min;
+          const v = el("arc-slider-val", "span"); const fmt = () => (s.value + (P(n).unit || "")); v.textContent = fmt();
+          s.oninput = () => { v.textContent = fmt(); emit(P(n).id, "input", Number(s.value)); };
+          wrap.appendChild(s); wrap.appendChild(v); return wrap; },
+
+        // labelled control
+        field(n) {
+          const control = n.children && n.children[0] ? build(n.children[0]) : null;
+          const left = el("arc-col"); const lab = el("arc-label"); lab.textContent = P(n).label || ""; left.appendChild(lab);
+          if (P(n).help) { const h = el("arc-help"); h.textContent = P(n).help; left.appendChild(h); }
+          if (P(n).stacked) { const col = el("arc-field-stacked"); col.appendChild(left); if (control) col.appendChild(control); return col; }
+          const row = el("arc-row"); row.style.justifyContent = "space-between"; row.appendChild(left); if (control) row.appendChild(control); return row;
+        },
+
+        // data / status
+        badge(n) { const e = el("arc-badge" + (P(n).tone ? " " + P(n).tone : ""), "span"); e.textContent = P(n).text || ""; return e; },
+        bar(n) { const max = P(n).max || 100; const pct = Math.max(0, Math.min(100, ((P(n).value || 0) / max) * 100));
+          const full = pct >= 100; const e = el("arc-bar" + (full ? " full" : "")); const i = el(null, "i"); i.style.width = pct + "%"; e.appendChild(i); return e; },
+        stat(n) { const e = el("arc-stat"); const l = el("lab"); l.textContent = P(n).label || ""; const v = el("val");
+          v.textContent = P(n).value != null ? P(n).value : "";
+          if (P(n).unit) { const u = el("unit", "span"); u.textContent = P(n).unit; v.appendChild(u); }
+          e.appendChild(l); e.appendChild(v); return e; },
+
+        // media
+        banner(n) { const e = el("arc-banner"); e.style.height = px(P(n).height, "150px");
+          if (P(n).caption) { const c = el("cap"); c.textContent = P(n).caption; e.appendChild(c); }
+          if (P(n).title || P(n).subtitle) { const s = el("scrim"); e.appendChild(s); const ov = el("ov");
+            if (P(n).title) { const t = el("t"); t.textContent = P(n).title; ov.appendChild(t); }
+            if (P(n).subtitle) { const st = el("s"); st.textContent = P(n).subtitle; ov.appendChild(st); } e.appendChild(ov); }
+          return e; },
+        image(n) { const e = el("arc-image"); e.style.height = px(P(n).height, "120px"); e.textContent = P(n).caption || ""; return e; },
+        avatar(n) { const e = el("arc-avatar"); const s = P(n).size || 38; e.style.width = e.style.height = s + "px";
+          e.style.fontSize = Math.round(s / 3) + "px"; e.textContent = P(n).initials || ""; return e; },
+
+        // list + rows + inventory
+        list(n) { const e = el("arc-list"); kids(n, e); return e; },
+        listrow(n) {
+          const e = el("arc-listrow" + (P(n).id ? " tappable" : "")); const left = el("arc-col");
+          const t = el("title"); t.textContent = P(n).title || ""; left.appendChild(t);
+          if (P(n).sub) { const s = el("sub"); s.textContent = P(n).sub; left.appendChild(s); }
+          e.appendChild(left);
+          const right = el("right");
+          if (P(n).rightText) { const r = el("arc-kv", "span"); r.style.color = "var(--data)"; r.style.fontFamily = "var(--mono)"; r.textContent = P(n).rightText; right.appendChild(r); }
+          (n.children || []).forEach((c) => right.appendChild(build(c)));
+          e.appendChild(right);
+          if (P(n).id) e.onclick = (ev) => { if (ev.target.closest(".arc-btn")) return; emit(P(n).id, "click"); };
+          return e;
+        },
+        slot(n) {
+          const e = el("arc-slot" + (P(n).rarity ? " " + P(n).rarity : "") + (P(n).id ? " tappable" : ""));
+          if (P(n).count != null) { const c = el("ct"); c.textContent = P(n).count; e.appendChild(c); }
+          if (P(n).name) { const nm = el("nm"); nm.textContent = P(n).name; e.appendChild(nm); }
+          if (P(n).id) e.onclick = () => emit(P(n).id, "click");
+          return e;
+        },
+      };
+
+      function render(root) { const host = document.getElementById("root"); host.textContent = ""; if (root) host.appendChild(build(root)); }
+      window.addEventListener("arc:render", (e) => render(e.detail));
+      callEvent("arc:ready", "{}");
+    </script>
+  </body>
+</html>
