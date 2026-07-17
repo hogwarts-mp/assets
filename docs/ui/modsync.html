@@ -1,0 +1,96 @@
+<!doctype html>
+<!--
+  HogwartsMP mod-sync loading overlay — full-screen, opaque, input-eating. Covers HL's "Press Any Key"/
+  front-end while the C++ ModSync subsystem installs + mounts + loads the server's blessed mods.
+
+  Contract with the client (game/mod_sync.cpp):
+    native -> page : CustomEvent "modsync:update" detail = { title, mods:[{name,state,pct,stage}] }
+                     state in pending | installing | installed | mounting | ready | error
+    page -> native : callEvent("ready","{}") on mount
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>HogwartsMP Mod Sync</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Spectral:wght@300;400;500&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #0d0b07; --panel: #151009; --accent: #c9a25a; --bright: #e2c07a;
+        --text: #e8ddc7; --muted: #9c8f77; --ok: #7fae6a; --err: #c86a5a; --track: #2a2115;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { width: 100%; height: 100%; overflow: hidden; }
+      body {
+        background:
+          radial-gradient(1200px 700px at 50% -10%, #241a0e 0%, transparent 60%),
+          linear-gradient(#0d0b07, #070502);
+        color: var(--text); font-family: "Spectral", Georgia, serif;
+        display: flex; align-items: center; justify-content: center;
+        -webkit-user-select: none; user-select: none; cursor: none;
+      }
+      .card {
+        width: min(560px, 78vw); padding: 40px 44px;
+        background: linear-gradient(#151009, #100c07);
+        border: 1px solid rgba(201,162,90,.28);
+        border-radius: 14px; box-shadow: 0 30px 90px rgba(0,0,0,.6), inset 0 0 60px rgba(201,162,90,.04);
+      }
+      .kicker { font-family: "Cinzel", serif; letter-spacing: .32em; font-size: 11px; color: var(--muted); text-transform: uppercase; }
+      h1 { font-family: "Cinzel", serif; font-weight: 700; font-size: 30px; color: var(--bright); margin: 6px 0 4px; letter-spacing: .01em; }
+      .sub { color: var(--muted); font-size: 14px; margin-bottom: 26px; min-height: 20px; transition: opacity .2s; }
+      .rule { height: 1px; background: linear-gradient(90deg, transparent, rgba(201,162,90,.35), transparent); margin: 0 0 22px; }
+      ul { list-style: none; display: flex; flex-direction: column; gap: 16px; }
+      li { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; }
+      .name { font-size: 16px; color: var(--text); }
+      .badge { font-family: "Cinzel", serif; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); text-align: right; }
+      .badge.ready { color: var(--ok); }
+      .badge.error { color: var(--err); }
+      .bar { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--track); overflow: hidden; position: relative; }
+      .bar > i { position: absolute; inset: 0; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--bright)); transform-origin: left; transition: width .4s ease; }
+      .fill-full > i { width: 100%; }
+      .fill-none > i { width: 0; }
+      .indet > i { width: 38%; animation: sweep 1.15s ease-in-out infinite; }
+      @keyframes sweep { 0% { left: -40%; } 100% { left: 100%; } }
+      .err > i { width: 100%; background: linear-gradient(90deg, #7a3b32, var(--err)); }
+      .foot { margin-top: 26px; text-align: center; color: var(--muted); font-size: 12.5px; letter-spacing: .04em; }
+      .dots::after { content: ""; animation: dots 1.4s steps(4, end) infinite; }
+      @keyframes dots { 0%{content:""} 25%{content:"."} 50%{content:".."} 75%{content:"..."} 100%{content:""} }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="kicker">Hogwarts&nbsp;Legacy&nbsp;&middot;&nbsp;Multiplayer</div>
+      <h1>Preparing your spellbook</h1>
+      <div class="sub" id="sub">Syncing server mods<span class="dots"></span></div>
+      <div class="rule"></div>
+      <ul id="list"></ul>
+      <div class="foot" id="foot">Please wait &mdash; do not close the game</div>
+    </div>
+    <script>
+      const LABEL = { pending: "Pending", installing: "Installing", installed: "Installed",
+                      mounting: "Loading", ready: "Ready", error: "Failed" };
+      const BARCLS = { pending: "fill-none", installing: "indet", installed: "fill-full",
+                       mounting: "indet", ready: "fill-full", error: "err" };
+      function render(detail) {
+        if (detail.title) document.getElementById("sub").textContent = detail.title;
+        if (detail.foot) document.getElementById("foot").textContent = detail.foot;
+        const list = document.getElementById("list");
+        const mods = detail.mods || [];
+        list.innerHTML = mods.map((m) => {
+          const st = m.state || "pending";
+          const pct = Math.max(0, Math.min(100, m.pct || 0));
+          const dl = st === "installing" && m.stage === "Downloading" && pct > 0;
+          const label = dl ? (pct + "%") : st === "installing" ? (m.stage || "Installing") : (LABEL[st] || st);
+          const bar = dl ? ('<span class="bar"><i style="width:' + pct + '%"></i></span>')
+                    : st === "installing" ? '<span class="bar indet"><i></i></span>'
+                    : ('<span class="bar ' + (BARCLS[st] || "fill-none") + '"><i></i></span>');
+          return '<li><span class="name">' + escapeHtml(m.name) + '</span>'
+               + '<span class="badge ' + (st === "installing" ? "installing" : st) + '">' + escapeHtml(label) + '</span>'
+               + bar + '</li>';
+        }).join("");
+      }
+      function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
+      window.addEventListener("modsync:update", (e) => render(e.detail || {}));
+      callEvent("ready", "{}");
+    </script>
+  </body>
+</html>
