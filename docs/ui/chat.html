@@ -52,6 +52,26 @@
             transition: opacity 1.2s ease;
         }
 
+        /* Client-side notices (copy confirmation, ...) — never sent to the server */
+        .msg.system {
+            color: var(--hmp-gold-dim);
+            font-size: 13px;
+            font-style: italic;
+        }
+
+        /* theme.css turns selection off document-wide; the history opts back in
+           while the chat is open so drag-to-copy works */
+        #chat.open #messages {
+            user-select: text;
+            cursor: text;
+        }
+
+        #messages ::selection {
+            background: var(--hmp-gold-dim);
+            color: var(--hmp-parchment);
+            text-shadow: none;
+        }
+
         /* Old messages fade away while the chat is closed but reappear when
            the history is opened */
         #chat:not(.open) .msg.faded {
@@ -115,17 +135,26 @@
                 list.scrollTop = list.scrollHeight;
             }
 
+            function append(text, className) {
+                const el = document.createElement("div");
+                el.className = className;
+                el.textContent = text;
+                list.appendChild(el);
+                while (list.children.length > MAX_MESSAGES) {
+                    list.removeChild(list.firstChild);
+                }
+                setTimeout(() => el.classList.add("faded"), FADE_AFTER_MS);
+                scrollToBottom();
+            }
+
             window.hmpChat = {
                 addMessage(text) {
-                    const el = document.createElement("div");
-                    el.className = "msg";
-                    el.textContent = text;
-                    list.appendChild(el);
-                    while (list.children.length > MAX_MESSAGES) {
-                        list.removeChild(list.firstChild);
-                    }
-                    setTimeout(() => el.classList.add("faded"), FADE_AFTER_MS);
-                    scrollToBottom();
+                    append(text, "msg");
+                },
+                // Local notice, not a chat line — also the callback the client uses
+                // if it ends up doing the clipboard write natively
+                addSystemMessage(text) {
+                    append(text, "msg system");
                 },
                 open() {
                     chat.classList.add("open");
@@ -197,6 +226,45 @@
                         }
                     }
                     e.preventDefault();
+                }
+            });
+
+            // Drag-to-copy: releasing the button copies whatever was highlighted,
+            // drops the highlight and hands the keyboard back to the input. Bound on
+            // the document so a drag that ends outside the panel still lands.
+            // Selections inside <input> don't surface in window.getSelection(), so
+            // ordinary text editing in the field never triggers this.
+            document.addEventListener("mouseup", () => {
+                if (!chat.classList.contains("open")) {
+                    return;
+                }
+
+                const selection = window.getSelection();
+                const text = selection ? selection.toString() : "";
+                if (!text.trim()) {
+                    return;
+                }
+
+                let copied = false;
+                try {
+                    copied = document.execCommand("copy"); // needs the selection still live
+                }
+                catch (e) {
+                    copied = false;
+                }
+
+                selection.removeAllRanges();
+                input.focus();
+
+                if (copied) {
+                    window.hmpChat.addSystemMessage("Text copied to clipboard");
+                }
+                else if (window.callEvent) {
+                    // CEF off-screen rendering may not route the clipboard write through
+                    // Blink; let the client do it natively and report back via
+                    // hmpChat.addSystemMessage. Silently ignored if it has no listener.
+                    console.log("execCommand('copy') failed, falling back to chat:copy");
+                    callEvent("chat:copy", text);
                 }
             });
 
